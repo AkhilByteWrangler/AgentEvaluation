@@ -16,6 +16,17 @@ from agents.types import AgentResult, ToolCall
 from agents.tools import dispatch
 from agents.tool_schemas import SCHEMAS
 
+# LangSmith imports (optional)
+if config.LANGSMITH_ENABLED:
+    from langsmith import traceable
+    from langsmith.run_helpers import get_current_run_tree
+else:
+    # No-op decorator when LangSmith is disabled
+    def traceable(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator if not args else decorator(args[0])
+
 
 # System prompt - tells the agent when to use tools
 _SYSTEM_PROMPT = (
@@ -34,6 +45,11 @@ class TaskAgent:
         self._client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         self._model = model
 
+    @traceable(
+        run_type="chain",
+        name="TaskAgent.run",
+        project_name=config.LANGSMITH_PROJECT if config.LANGSMITH_ENABLED else None,
+    )
     async def run(self, task_id: str, instruction: str, trial_number: int = 1) -> AgentResult:
         """Run one trial of a task. Returns AgentResult with answer and metrics."""
         start = time.perf_counter()
@@ -43,6 +59,15 @@ class TaskAgent:
         final_answer = ""
         turn = 0
         error: str | None = None
+
+        # Add tags to LangSmith trace
+        if config.LANGSMITH_ENABLED:
+            try:
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.add_tags([task_id, f"trial_{trial_number}"])
+            except Exception:
+                pass
 
         try:
             while turn < config.MAX_AGENT_TURNS:
@@ -86,6 +111,27 @@ class TaskAgent:
 
         except Exception as e:
             error = str(e)
+
+        # Update LangSmith trace with final metrics
+        if config.LANGSMITH_ENABLED:
+            try:
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.extra = {
+                        "task_id": task_id,
+                        "trial_number": trial_number,
+                        "model": self._model,
+                        "n_turns": turn,
+                        "n_total_tokens": total_tokens,
+                        "latency_seconds": time.perf_counter() - start,
+                        "error": error,
+                        "tool_calls": [
+                            {"turn": tc.turn, "tool": tc.tool_name, "args": tc.args}
+                            for tc in tool_calls
+                        ],
+                    }
+            except Exception:
+                pass
 
         return AgentResult(
             task_id=task_id,
