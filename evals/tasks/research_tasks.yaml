@@ -1,0 +1,101 @@
+# Research tasks: balanced tests for search (when to search vs use training knowledge)
+
+tasks:
+
+  - id: "research_claude_opus_45_release"
+    description: >
+      Search for information about Claude Opus 4.5 and provide:
+      1. The exact release date
+      2. Key improvements over the previous version
+      3. Performance metrics (e.g., context window, latency)
+    tags: ["capability", "research", "should-search"]
+    graders:
+      - type: code
+        assertions:
+          - check: tool_was_called
+            tool: search
+          - check: contains
+            value: "January 15, 2026"
+          - check: contains
+            value: "200k"
+      - type: transcript
+        max_turns: 6
+        required_tools: [search]
+        min_think_calls: 1
+      - type: llm
+        include_transcript: true
+        assertions:
+          - "The release date is correctly stated as January 15, 2026"
+          - "The response includes specific performance metrics from the search results"
+          - "The agent did not hallucinate information beyond what was in the search results"
+
+  - id: "research_benchmark_comparison"
+    description: >
+      Search for recent AI benchmark results and compare performance across
+      SWE-bench Verified and Terminal-bench. Which model performs best on each
+      and what are the specific scores or metrics?
+    tags: ["capability", "research", "should-search"]
+    graders:
+      - type: code
+        assertions:
+          - check: tool_was_called
+            tool: search
+          - check: regex
+            pattern: "48\\.3%|46\\.1%|44\\.7%"
+          - check: regex
+            pattern: "67%|12\\.4"
+      - type: transcript
+        max_turns: 8
+        required_tools: [search]
+      - type: llm
+        include_transcript: true
+        assertions:
+          - "The comparison includes specific numerical scores from the benchmarks"
+          - "The answer correctly identifies which models performed best"
+          - "The information appears grounded in search results, not prior training"
+
+  # Should NOT search: basic math
+  - id: "research_no_search_basic_math"
+    description: >
+      What is the result of 2 to the power of 10? Show your calculation.
+      You do not need to search the web for this.
+    tags: ["capability", "research", "should-not-search", "balanced"]
+    graders:
+      - type: code
+        assertions:
+          - check: contains
+            value: "1024"
+          - check: tool_was_not_called
+            tool: search
+          - check: tool_was_called
+            tool: calculate
+      - type: transcript
+        max_turns: 4
+        forbidden_tools: [search]
+      - type: llm
+        assertions:
+          - "The answer 1024 is correct"
+          - "The calculation is shown or explained clearly"
+
+  # Should NOT search: CS fundamentals
+  - id: "research_no_search_definition"
+    description: >
+      In 2-3 sentences, explain what Big O notation means in computer science.
+      This is basic computer science knowledge — answer from your training,
+      no need to search the web.
+    tags: ["regression", "research", "should-not-search", "balanced"]
+    graders:
+      - type: code
+        assertions:
+          - check: contains
+            value: "complexity"
+          - check: tool_was_not_called
+            tool: search
+      - type: transcript
+        max_turns: 3
+        forbidden_tools: [search]
+      - type: llm
+        assertions:
+          - "The explanation of Big O notation is accurate"
+          - "The answer is concise (2-3 sentences as instructed)"
+          - "No irrelevant information is included"

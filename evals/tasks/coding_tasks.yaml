@@ -1,0 +1,103 @@
+# Coding tasks: test code generation, algorithms, and workflow
+
+tasks:
+
+  # Basic function implementation
+  - id: "code_fibonacci"
+    description: >
+      Write a Python function called `fibonacci(n)` that returns the nth
+      Fibonacci number (0-indexed, so fibonacci(0)=0, fibonacci(1)=1,
+      fibonacci(6)=8). The function should handle n=0 correctly.
+    tags: ["capability", "coding", "easy"]
+    graders:
+      - type: code
+        assertions:
+          - check: contains
+            value: "def fibonacci"
+          - check: contains
+            value: "return"
+          - check: code_block_present
+          - check: not_contains
+            value: "I cannot"
+      - type: transcript
+        max_turns: 6
+        required_tools: [write_code]
+      - type: llm
+        assertions:
+          - "The fibonacci function is syntactically valid Python"
+          - "The function correctly handles the base case fibonacci(0)=0"
+          - "The function correctly handles fibonacci(1)=1"
+
+  # Algorithm with calculation
+  - id: "code_binary_search"
+    description: >
+      Explain the time complexity of binary search and write a Python function
+      `binary_search(arr, target)` that returns the index of the target in a
+      sorted list, or -1 if not found. Also calculate: how many comparisons
+      does binary search need for an array of 1024 elements in the worst case?
+    tags: ["capability", "coding", "algorithms"]
+    graders:
+      - type: code
+        assertions:
+          - check: contains
+            value: "def binary_search"
+          - check: regex
+            pattern: "O\\(log"
+          - check: regex
+            pattern: "\\b10\\b"
+          - check: tool_was_called
+            tool: calculate
+          - check: code_block_present
+      - type: transcript
+        max_turns: 8
+        required_tools: [calculate, write_code]
+        min_think_calls: 1
+      - type: llm
+        assertions:
+          - "The binary_search function is syntactically valid Python"
+          - "The function returns -1 when target is not found"
+          - "The explanation of O(log n) complexity is correct and clear"
+
+  # Regression: explanations
+  - id: "code_list_comprehension_explain"
+    description: >
+      Explain Python list comprehensions in 2–3 sentences and give one simple
+      example that squares numbers 1 through 5.
+    tags: ["regression", "coding", "explainer"]
+    graders:
+      - type: code
+        assertions:
+          - check: regex
+            pattern: "\\[.*for.*in.*\\]"
+          - check: regex
+            pattern: "\\*\\*2|\\* \\*|pow|square"
+          - check: code_block_present
+      - type: llm
+        assertions:
+          - "The explanation of list comprehensions is accurate"
+          - "The example correctly squares numbers 1 through 5"
+
+  # Balanced: should NOT write code
+  - id: "code_no_code_needed"
+    description: >
+      What is the difference between a compiled language and an interpreted language?
+      Answer concisely in plain English. Do NOT write any code examples.
+    tags: ["capability", "balanced", "no-code"]
+    graders:
+      - type: code
+        assertions:
+          - check: contains
+            value: "compiled"
+          - check: contains
+            value: "interpreted"
+          - check: tool_was_not_called
+            tool: write_code
+          - check: not_contains
+            value: "```"
+      - type: transcript
+        max_turns: 4
+        forbidden_tools: [write_code]
+      - type: llm
+        assertions:
+          - "The distinction between compiled and interpreted languages is clearly explained"
+          - "The answer is written in plain English without code examples as instructed"
