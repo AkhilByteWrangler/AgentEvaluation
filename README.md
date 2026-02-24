@@ -2,7 +2,7 @@
 
 An evaluation harness for testing AI agents before production. Tests output quality, reasoning patterns, and tool usage.
 
-Inspired by Anthropic's ["Demystifying Evals for AI Agents"](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents).
+Inspired by Anthropic's [&#34;Demystifying Evals for AI Agents&#34;](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents).
 
 ## What Problem Does This Solve?
 
@@ -27,6 +27,7 @@ This runs coding tasks 3 times each and shows you pass rates. Results are saved 
 ## How It Works
 
 ### 1. Define Tasks (YAML)
+
 Create test cases in `evals/tasks/`. Each task specifies what the agent should do and how to grade it:
 
 ```yaml
@@ -41,6 +42,7 @@ Create test cases in `evals/tasks/`. Each task specifies what the agent should d
 ```
 
 ### 2. Run Multiple Trials
+
 Agents behave non-deterministically, so we run each task multiple times to measure consistency:
 
 ```bash
@@ -50,16 +52,19 @@ python main.py --suite coding --trials 5
 ### 3. Grade Results with Three Types of Graders
 
 **CodeGrader** - Fast checks on final output
+
 - Does the output contain specific text?
 - Does it match a regex pattern?
 - Was a specific tool called?
 
 **LLMGrader** - Nuanced judgment calls
+
 - Is the explanation accurate?
 - Is the tone appropriate?
 - Does it answer the question?
 
 **TranscriptGrader** - Process validation
+
 - Did the agent use the right tools?
 - Did it complete in a reasonable number of turns?
 - Did it follow expected workflow?
@@ -69,14 +74,74 @@ python main.py --suite coding --trials 5
 Two key metrics tell different stories:
 
 **pass@k** = probability of at least 1 success in k attempts
+
 - Useful for: Coding tasks where you just need one correct solution
 - Example: pass@5 = 95% means high capability
 
-**pass^k** = probability that all k attempts succeed  
+**pass^k** = probability that all k attempts succeed
+
 - Useful for: Production where every interaction must work
 - Example: pass^5 = 20% means reliability issues
 
 If pass@5 is high but pass^5 is low, your agent can solve the task but inconsistently.
+
+## LangSmith Observability (Optional)
+
+AgentEval integrates with [LangSmith](https://smith.langchain.com/) for visual debugging and production monitoring.
+
+### Setup
+
+1. **Get a LangSmith API key**: Sign up at [smith.langchain.com](https://smith.langchain.com/) and get your API key from Settings
+2. **Add to your `.env` file**:
+
+   ```bash
+   LANGSMITH_API_KEY="your_api_key_here"
+   LANGSMITH_PROJECT="agent-eval"  # Optional: customize project name
+   ```
+3. **Run evals as normal**:
+
+   ```bash
+   python main.py --suite coding --trials 3
+   ```
+
+### What You Get
+
+**Visual Trace Trees**: See agent reasoning flow hierarchically
+
+- Each eval suite → tasks → trials → agent turns → tool calls
+- Click through to inspect inputs/outputs at each step
+- Identify where failures occur in multi-turn conversations
+
+**Performance Metrics**: Automatically tracked per run
+
+- Token usage and cost per task/trial
+- Latency waterfall charts
+- Tool call frequency and patterns
+
+**Search & Filters**: Find problematic runs
+
+- Filter by task_id, trial number, or pass/fail status
+- Search for specific tool calls or error patterns
+- Compare runs across different model versions
+
+**Debugging Failed Trials**:
+
+- View full context that led to failures
+- See exact prompts, responses, and tool outputs
+- Replay specific trials to test fixes
+
+### LangSmith Dashboard
+
+After running evals, visit LangSmith project to explore:
+
+- **Traces tab**: Drill down into individual agent runs
+- **Playground**: Modify and re-run failed cases
+- **Datasets**: Export high-value eval cases for regression testing
+- **Automations**: Set up alerts when pass rates drop
+
+### Disabling LangSmith
+
+Simply remove or comment out `LANGSMITH_API_KEY` from `.env`. The framework will work normally without tracing.
 
 ## Project Structure
 
@@ -108,6 +173,7 @@ AgentEval/
 ## Common Usage Patterns
 
 ### Run Specific Test Suites
+
 ```bash
 python main.py --suite coding
 python main.py --suite research
@@ -115,6 +181,7 @@ python main.py --suite conversational
 ```
 
 ### Test New vs Existing Features
+
 ```bash
 # Test new capabilities under development
 python main.py --tags capability
@@ -124,6 +191,7 @@ python main.py --tags regression
 ```
 
 ### Debug Failures
+
 ```bash
 # See full agent transcripts
 python main.py --suite coding --show-transcripts
@@ -133,12 +201,15 @@ cat results/transcripts/code_fibonacci_trial1.json | python -m json.tool
 ```
 
 Transcripts show:
+
 - Every tool call the agent made
 - All reasoning steps
 - Whether failures are agent errors or grading issues
 
 ### Compare Models
+
 Edit `.env` to test different models:
+
 ```bash
 AGENT_MODEL=claude-opus-4-5
 JUDGE_MODEL=claude-sonnet-4-5
@@ -149,31 +220,38 @@ Run the same eval suite with different configurations to compare performance.
 ## Writing Good Tasks
 
 ### Balance Positive and Negative Cases
+
 Don't just test "can it use search?" Test both:
+
 - Tasks where search is required
 - Tasks where search wastes time
 
 This prevents agents from always calling tools "just in case."
 
 ### Tag by Purpose
+
 ```yaml
 tags: ["capability"]   # New feature, expect low initial scores
 tags: ["regression"]   # Stable feature, expect 95%+ scores
 ```
 
 ### Start Simple
+
 If a task has 0% pass rate, it's usually misconfigured. Test that humans can pass it first.
 
 ## Key Concepts
 
 ### Terminology
+
 - **Task**: One test case (one YAML entry)
 - **Trial**: One agent attempt at a task
 - **Suite**: Group of related tasks (coding, research, etc.)
 - **Transcript**: Full record of an agent run
 
 ### Statistical Insight
+
 With 60% per-trial success rate:
+
 - pass@1 = 60%
 - pass@5 = 99% (at least one success)
 - pass^5 = 8% (all five succeed)
@@ -183,6 +261,7 @@ This shows capability exists but consistency doesn't.
 ## Advanced Features
 
 ### Custom Graders
+
 Add your own grading logic in `evals/graders/`:
 
 ```python
@@ -193,13 +272,16 @@ class CustomGrader(BaseGrader):
 ```
 
 ### Production Monitoring
+
 Convert real failures into regression tests:
+
 1. User reports a bug
 2. Add it as a task with `tags: ["regression"]`
 3. Fix the bug
 4. Task now ensures it doesn't regress
 
 ### Saturation Detection
+
 When pass@k exceeds 95%, tasks become too easy. Add harder variants to keep improving.
 
 ## Command Reference
@@ -226,5 +308,6 @@ python main.py --model claude-haiku-3-5
 
 - [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) - Anthropic
 - [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) - Anthropic
-- Eval frameworks: Harbor, Promptfoo, Braintrust, LangSmith
+- Observability: [LangSmith](https://smith.langchain.com/), [LangFuse](https://langfuse.com/), [Arize Phoenix](https://phoenix.arize.com/)
+- Eval frameworks: Harbor, Promptfoo, Braintrust
 - Agent benchmarks: SWE-bench, Terminal-Bench, WebArena, OSWorld

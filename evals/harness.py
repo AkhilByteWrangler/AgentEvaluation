@@ -26,6 +26,17 @@ from evals.graders.llm_grader import LLMGrader
 from evals.graders.transcript_grader import TranscriptGrader
 from evals.metrics import aggregate_trial_results, summarize_metrics, TaskMetrics
 
+# LangSmith imports 
+if config.LANGSMITH_ENABLED:
+    from langsmith import traceable
+    from langsmith.run_helpers import get_current_run_tree
+else:
+    # No-op decorator when LangSmith is disabled
+    def traceable(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator if not args else decorator(args[0])
+
 console = Console()
 
 
@@ -117,8 +128,38 @@ class EvalHarness:
         n_trials: int = config.DEFAULT_N_TRIALS,
     ) -> EvalReport:
         """Run all tasks (n_trials each) concurrently, grade, aggregate metrics."""
+        return await self._run_suite_traced(tasks, suite_name, n_trials)
+
+    @traceable(
+        run_type="chain",
+        name="EvalHarness.run_suite",
+        project_name=config.LANGSMITH_PROJECT if config.LANGSMITH_ENABLED else None,
+    )
+    async def _run_suite_traced(
+        self,
+        tasks: list[dict],
+        suite_name: str = "eval",
+        n_trials: int = config.DEFAULT_N_TRIALS,
+    ) -> EvalReport:
+        """Internal traced implementation of run_suite."""
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         started_at = datetime.now().isoformat()
+
+        # Add metadata to LangSmith trace
+        if config.LANGSMITH_ENABLED:
+            try:
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.extra = {
+                        "suite_name": suite_name,
+                        "run_id": run_id,
+                        "n_tasks": len(tasks),
+                        "n_trials": n_trials,
+                        "agent_model": self.agent_model,
+                    }
+                    run_tree.add_tags([suite_name, run_id])
+            except Exception:
+                pass  
 
         console.print(Panel(
             f"[bold cyan]AgentEval Harness[/]\n"
@@ -202,8 +243,23 @@ class EvalHarness:
 
         return task_result
 
+    @traceable(
+        run_type="chain",
+        name="run_trial",
+        project_name=config.LANGSMITH_PROJECT if config.LANGSMITH_ENABLED else None,
+    )
     async def _run_single_trial(self, task: dict, trial_number: int) -> TrialResult:
         """Run one trial: fresh agent → grade → record. Isolation via fresh TaskAgent."""
+        
+        # Add tags to LangSmith trace
+        if config.LANGSMITH_ENABLED:
+            try:
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.add_tags([task["id"], f"trial_{trial_number}"])
+            except Exception:
+                pass
+        
         agent = TaskAgent(model=self.agent_model)
 
         agent_result: AgentResult = await agent.run(
@@ -245,6 +301,25 @@ class EvalHarness:
         overall_score = total_score / n_graders if n_graders > 0 else 0.0
 
         self._save_transcript(task["id"], trial_number, agent_result)
+
+        # Update LangSmith trace with grading results
+        if config.LANGSMITH_ENABLED:
+            try:
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.extra = {
+                        "task_id": task["id"],
+                        "trial_number": trial_number,
+                        "agent_model": self.agent_model,
+                        "overall_passed": all_passed,
+                        "overall_score": overall_score,
+                        "n_turns": agent_result.n_turns,
+                        "n_total_tokens": agent_result.n_total_tokens,
+                        "latency_seconds": agent_result.latency_seconds,
+                        "grader_results": grader_results,
+                    }
+            except Exception:
+                pass  
 
         return TrialResult(
             task_id=task["id"],
