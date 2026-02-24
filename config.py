@@ -23,6 +23,11 @@ AGENT_MODEL: str = os.getenv("AGENT_MODEL")
 JUDGE_MODEL: str = os.getenv("JUDGE_MODEL")
 
 
+LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "")
+LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "agent-eval")
+LANGSMITH_ENABLED: bool = bool(LANGSMITH_API_KEY)  
+
+
 DEFAULT_N_TRIALS: int = 3
 EVAL_CONCURRENCY: int = int(os.getenv("EVAL_CONCURRENCY", "5"))
 MAX_AGENT_TURNS: int = 20
