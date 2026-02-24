@@ -271,7 +271,6 @@ class EvalHarness:
         grader_types_in_task = {g["type"] for g in task.get("graders", [])}
 
         grader_results = []
-        all_passed = True
         total_score = 0.0
         n_graders = 0
 
@@ -281,8 +280,6 @@ class EvalHarness:
             try:
                 gresult = await grader.grade(agent_result, task)
                 grader_results.append(gresult.to_dict())
-                if not gresult.passed:
-                    all_passed = False
                 total_score += gresult.score
                 n_graders += 1
             except Exception as e:
@@ -292,13 +289,11 @@ class EvalHarness:
                     "score": 0.0,
                     "reason": f"Grader raised exception: {e}",
                 })
-                all_passed = False
                 n_graders += 1
 
-        if agent_result.error:
-            all_passed = False
-
         overall_score = total_score / n_graders if n_graders > 0 else 0.0
+        
+        overall_passed = overall_score >= config.PASS_THRESHOLD and agent_result.error is None
 
         self._save_transcript(task["id"], trial_number, agent_result)
 
@@ -311,7 +306,7 @@ class EvalHarness:
                         "task_id": task["id"],
                         "trial_number": trial_number,
                         "agent_model": self.agent_model,
-                        "overall_passed": all_passed,
+                        "overall_passed": overall_passed,
                         "overall_score": overall_score,
                         "n_turns": agent_result.n_turns,
                         "n_total_tokens": agent_result.n_total_tokens,
@@ -324,7 +319,7 @@ class EvalHarness:
         return TrialResult(
             task_id=task["id"],
             trial_number=trial_number,
-            overall_passed=all_passed,
+            overall_passed=overall_passed,
             overall_score=overall_score,
             grader_results=grader_results,
             transcript=agent_result.messages,

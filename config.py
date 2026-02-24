@@ -27,7 +27,15 @@ LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "")
 LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "agent-eval")
 LANGSMITH_ENABLED: bool = bool(LANGSMITH_API_KEY)  
 
+if LANGSMITH_ENABLED:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT
+
 
 DEFAULT_N_TRIALS: int = 3
 EVAL_CONCURRENCY: int = int(os.getenv("EVAL_CONCURRENCY", "5"))
 MAX_AGENT_TURNS: int = 20
+
+# Pass/Fail Threshold: trials pass if overall_score >= this value (0.0-1.0)
+PASS_THRESHOLD: float = float(os.getenv("PASS_THRESHOLD", "0.7"))
