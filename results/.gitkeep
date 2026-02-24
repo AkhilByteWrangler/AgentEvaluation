@@ -1,0 +1,2 @@
+# AgentEval — results are gitignored (they contain API outputs and API keys context)
+# Re-generate them by running: python main.py
