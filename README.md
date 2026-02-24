@@ -1,227 +1,230 @@
 # AgentEval
 
-Eval harness for AI agents. Tests thinking, workflow, and output quality.
+An evaluation harness for testing AI agents before production. Tests output quality, reasoning patterns, and tool usage.
 
-Based on Anthropic's ["Demystifying Evals for AI Agents"](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents).
+Inspired by Anthropic's ["Demystifying Evals for AI Agents"](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents).
 
-## Overview
+## What Problem Does This Solve?
 
-Evals catch agent failures before production. Without them, debugging becomes reactive: user reports issue → manual reproduction → fix → deployment uncertainty.
+Without evals, you find bugs reactively: a user reports an issue, you manually reproduce it, fix it, and hope it works. With evals, you catch failures before deployment by running automated tests that measure agent performance across multiple attempts.
 
-This implementation provides a complete eval system with three grader types, multiple trial support, and transcript analysis.
-
-## Setup
+## Quick Start
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Set up your API key
 cp .env.example .env
 # Add your ANTHROPIC_API_KEY to .env
 
-python main.py --suite coding --trials 2
+# Run a simple evaluation
+python main.py --suite coding --trials 3
 ```
+
+This runs coding tasks 3 times each and shows you pass rates. Results are saved to `results/` with full transcripts.
+
+## How It Works
+
+### 1. Define Tasks (YAML)
+Create test cases in `evals/tasks/`. Each task specifies what the agent should do and how to grade it:
+
+```yaml
+- id: "fibonacci"
+  description: "Write a function to calculate fibonacci numbers"
+  tags: ["coding", "capability"]
+  graders:
+    - type: code
+      assertions:
+        - check: contains
+          value: "fibonacci"
+```
+
+### 2. Run Multiple Trials
+Agents behave non-deterministically, so we run each task multiple times to measure consistency:
+
+```bash
+python main.py --suite coding --trials 5
+```
+
+### 3. Grade Results with Three Types of Graders
+
+**CodeGrader** - Fast checks on final output
+- Does the output contain specific text?
+- Does it match a regex pattern?
+- Was a specific tool called?
+
+**LLMGrader** - Nuanced judgment calls
+- Is the explanation accurate?
+- Is the tone appropriate?
+- Does it answer the question?
+
+**TranscriptGrader** - Process validation
+- Did the agent use the right tools?
+- Did it complete in a reasonable number of turns?
+- Did it follow expected workflow?
+
+### 4. Analyze Metrics
+
+Two key metrics tell different stories:
+
+**pass@k** = probability of at least 1 success in k attempts
+- Useful for: Coding tasks where you just need one correct solution
+- Example: pass@5 = 95% means high capability
+
+**pass^k** = probability that all k attempts succeed  
+- Useful for: Production where every interaction must work
+- Example: pass^5 = 20% means reliability issues
+
+If pass@5 is high but pass^5 is low, your agent can solve the task but inconsistently.
 
 ## Project Structure
 
 ```
 AgentEval/
 ├── agents/
-│   └── task_agent.py        # Agent being evaluated (bootstrapped)
+│   └── task_agent.py           # The agent being tested
 │
 ├── evals/
-│   ├── harness.py           # Runs tasks, grades results
-│   ├── metrics.py           # pass@k and pass^k calculations
-│   │
-│   ├── graders/             # Three grader types
-│   │   ├── code_grader.py        Fast deterministic checks
-│   │   ├── llm_grader.py         LLM-as-judge
-│   │   ├── transcript_grader.py  Workflow/process checks
-│   │   └── rubrics/              Judging criteria
-│   │
-│   └── tasks/              # Task definitions (YAML)
+│   ├── harness.py              # Test runner
+│   ├── metrics.py              # pass@k calculations
+│   ├── graders/                # Three grader types
+│   │   ├── code_grader.py
+│   │   ├── llm_grader.py
+│   │   ├── transcript_grader.py
+│   │   └── rubrics/            # Criteria for LLM judges
+│   └── tasks/                  # Test cases
 │       ├── coding_tasks.yaml
 │       ├── research_tasks.yaml
 │       └── conversational_tasks.yaml
 │
-├── results/                # Eval results + transcripts
-├── main.py                 # CLI entry point
-└── config.py               # Model selection, settings
+├── results/
+│   ├── *.json                  # Aggregate results
+│   └── transcripts/            # Full agent traces
+│
+└── main.py                     # Command-line interface
 ```
 
-## Core Concepts
+## Common Usage Patterns
 
-### Terminology
-
-- **Task**: One test case with inputs and success criteria (one YAML entry)
-- **Trial**: One attempt at a task (one agent run)
-- **Transcript**: Full record of tool calls and reasoning
-- **Outcome**: Final state (what the grader sees, not what the agent claims)
-- **Grader**: Code that scores performance
-- **Suite**: Collection of tasks measuring specific capabilities
-
-### Three Types of Graders
-
-**CodeGrader** - Fast deterministic checks on final output
-- Examples: `contains "fibonacci"`, regex matches, `tool_was_called`
-- Near-instant, free, deterministic
-
-**LLMGrader** - Judges nuanced aspects requiring interpretation
-- Examples: "Is this explanation accurate?", "Is the tone appropriate?"
-- Slower, costs API calls, non-deterministic
-
-**TranscriptGrader** - Process/workflow checks
-- Examples: `max_turns: 8`, `required_tools: [search]`, `min_think_calls: 1`
-- Fast, free, deterministic
-- Validates agent followed expected process
-
-### pass@k vs pass^k
-
-Agent behavior varies between runs. These metrics quantify that variance:
-
-- **pass@k**: Probability of ≥1 success in k attempts. Rises as k increases. Relevant for coding tasks where one correct solution suffices.
-- **pass^k**: Probability that all k attempts succeed. Falls as k increases. Relevant for production where every interaction must work.
-
-Example: Agent succeeds 3 out of 5 trials (60% per-trial success rate)
-- pass@1 = 60%, pass^1 = 60% (identical at k=1)
-- pass@3 ≈ 94%, pass^3 ≈ 22% (diverging)
-- pass@5 ≈ 99%, pass^5 ≈ 8% (opposite stories)
-
-High pass@k with low pass^k indicates consistency issues rather than capability limits.
-
-Implementation: `evals/metrics.py`
-
-### Capability vs Regression Tasks
-
-Tasks can be tagged by purpose:
-- `tags: ["capability"]` - New functionality being developed, typically start with low pass rates
-- `tags: ["regression"]` - Existing functionality, should maintain near 100% pass rates
-
-Filter by tag:
+### Run Specific Test Suites
 ```bash
+python main.py --suite coding
+python main.py --suite research
+python main.py --suite conversational
+```
+
+### Test New vs Existing Features
+```bash
+# Test new capabilities under development
 python main.py --tags capability
-python main.py --tags regression --trials 1
+
+# Ensure existing features still work
+python main.py --tags regression
 ```
 
-### Balanced Problem Sets
-
-Evals include both positive and negative cases. For search behavior testing:
-- Tasks where search is required (`should-search`)
-- Tasks where search is unnecessary (`should-not-search`)
-
-This prevents optimization toward always-search or never-search behavior.
-
-`research_tasks.yaml` demonstrates this. `TranscriptGrader` enforces balance via `required_tools` and `forbidden_tools`.
-
-## Transcript Analysis
-
-Full transcripts are saved to `results/transcripts/` after each eval run.
-
+### Debug Failures
 ```bash
-# Run with detailed output
-python main.py --suite coding --trials 3 --show-transcripts
+# See full agent transcripts
+python main.py --suite coding --show-transcripts
 
-# Inspect raw transcript
-cat results/transcripts/code_fibonacci_trial1.json | python -m json.tool | head -100
+# Inspect a specific transcript file
+cat results/transcripts/code_fibonacci_trial1.json | python -m json.tool
 ```
 
 Transcripts show:
-1. Whether grader judgments match actual behavior
-2. Whether agent mistakes are genuine or grader misses valid solutions
-3. Tool call sequences and their appropriateness
-4. Turn count and efficiency
+- Every tool call the agent made
+- All reasoning steps
+- Whether failures are agent errors or grading issues
 
-## Task Format
-
-Tasks are defined in YAML:
-
-```yaml
-- id: "task_identifier"
-  description: "Task description"
-  tags: ["capability", "coding"]
-  graders:
-    - type: code
-      assertions:
-        - check: contains
-          value: "expected output"
-    - type: llm
-      assertions:
-        - "The code is correct and efficient"
-```
-
-Run with: `python main.py --suite coding --trials 2 --show-transcripts`
-
-Note: 0% pass@k typically indicates task misconfiguration rather than agent incapability.
-
-## Variance Analysis
-
-Compare results across different trial counts:
-
+### Compare Models
+Edit `.env` to test different models:
 ```bash
-python main.py --suite coding --trials 1
-python main.py --suite coding --trials 5
-```
-
-Higher trial counts reveal which tasks have high variance vs consistent behavior.
-
-## Model Configuration
-
-Models are configured in `.env`:
-```
 AGENT_MODEL=claude-opus-4-5
 JUDGE_MODEL=claude-sonnet-4-5
 ```
 
-Different model combinations can be compared by running the same eval suite with different configurations.
+Run the same eval suite with different configurations to compare performance.
 
-## CLI Reference
+## Writing Good Tasks
+
+### Balance Positive and Negative Cases
+Don't just test "can it use search?" Test both:
+- Tasks where search is required
+- Tasks where search wastes time
+
+This prevents agents from always calling tools "just in case."
+
+### Tag by Purpose
+```yaml
+tags: ["capability"]   # New feature, expect low initial scores
+tags: ["regression"]   # Stable feature, expect 95%+ scores
+```
+
+### Start Simple
+If a task has 0% pass rate, it's usually misconfigured. Test that humans can pass it first.
+
+## Key Concepts
+
+### Terminology
+- **Task**: One test case (one YAML entry)
+- **Trial**: One agent attempt at a task
+- **Suite**: Group of related tasks (coding, research, etc.)
+- **Transcript**: Full record of an agent run
+
+### Statistical Insight
+With 60% per-trial success rate:
+- pass@1 = 60%
+- pass@5 = 99% (at least one success)
+- pass^5 = 8% (all five succeed)
+
+This shows capability exists but consistency doesn't.
+
+## Advanced Features
+
+### Custom Graders
+Add your own grading logic in `evals/graders/`:
+
+```python
+class CustomGrader(BaseGrader):
+    def grade(self, outcome: str, transcript: List) -> GradeResult:
+        # Your logic here
+        return GradeResult(passed=True, feedback="Looks good")
+```
+
+### Production Monitoring
+Convert real failures into regression tests:
+1. User reports a bug
+2. Add it as a task with `tags: ["regression"]`
+3. Fix the bug
+4. Task now ensures it doesn't regress
+
+### Saturation Detection
+When pass@k exceeds 95%, tasks become too easy. Add harder variants to keep improving.
+
+## Command Reference
 
 ```bash
 # Run everything
 python main.py
 
-# Single suite
-python main.py --suite coding
-python main.py --suite research
-python main.py --suite conversational
+# Specific suite with more trials
+python main.py --suite research --trials 10
 
-# More trials = better metrics
-python main.py --trials 5
-
-# Filter by tag
+# Filter by tags
 python main.py --tags capability
 python main.py --tags regression
 
-# See detailed output
+# See agent traces
 python main.py --show-transcripts
 
-# Different model
+# Test different model
 python main.py --model claude-haiku-3-5
 ```
 
-## Extension Possibilities
-
-1. **Production monitoring**: Convert real agent failures into eval tasks
-2. **Saturation monitoring**: Track when pass rates exceed 95% (indicates need for harder tasks)
-3. **Human calibration**: Verify LLM judge consistency against human judgments
-4. **Pairwise comparisons**: Compare pass@k across different models
-5. **Partial credit**: Implement weighted grader scoring for multi-component tasks
-
-## Implementation Details
-
-Key patterns from the article implemented here:
-
-- Multiple trials per task (handles non-determinism)
-- Fresh agent per trial (isolation, no shared state)
-- Three grader types (fast deterministic + nuanced judgment + workflow checks)
-- Transcripts saved (post-hoc inspection)
-- Balanced problem sets (both positive and negative cases)
-- Capability vs regression tagging
-- pass@k and pass^k metrics
-
-See code in `evals/harness.py`, `evals/metrics.py`, and `evals/graders/`.
-
 ## References
 
-- [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) - Anthropic Engineering
-- [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) - Anthropic Engineering
-- Benchmarks: SWE-bench Verified, Terminal-Bench, τ-Bench, WebArena, OSWorld
-- Frameworks: Harbor, Promptfoo, Braintrust, LangSmith, Langfuse
+- [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) - Anthropic
+- [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) - Anthropic
+- Eval frameworks: Harbor, Promptfoo, Braintrust, LangSmith
+- Agent benchmarks: SWE-bench, Terminal-Bench, WebArena, OSWorld
